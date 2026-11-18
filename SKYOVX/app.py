@@ -3,7 +3,6 @@ import os
 import hmac
 import secrets
 from functools import wraps
-from datetime import datetime
 
 import requests
 from flask import (
@@ -12,7 +11,6 @@ from flask import (
 )
 
 app = Flask(__name__)
-
 app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 
 app.config.update(
@@ -23,18 +21,168 @@ app.config.update(
 
 PRV_PASSWORD = os.environ.get("PRV_PASSWORD", "")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
-
 GOOGLE_SCRIPT_URL = os.environ.get("GOOGLE_SCRIPT_URL", "")
 GOOGLE_SCRIPT_TOKEN = os.environ.get("GOOGLE_SCRIPT_TOKEN", "")
 
 TIMEOUT = 20
 
+# =====================================================
+# SKYOVX TEST - 20 QUESTIONS
+# Answers are checked ONLY on the server.
+# =====================================================
 
-# ---------------- GOOGLE SHEETS ----------------
+QUESTIONS = [
+    {
+        "question": "What is my favorite color?",
+        "options": ["Black 🖤", "Red ❤️", "Blue 💙", "White 🤍"],
+        "answer": "A"
+    },
+    {
+        "question": "What is my favorite food?",
+        "options": ["Pizza 🍕", "Tacos 🌮", "Burger 🍔", "Pasta 🍝"],
+        "answer": "C"
+    },
+    {
+        "question": "What is my favorite drink?",
+        "options": ["Coffee ☕", "Tea 🍵", "Coca-Cola 🥤", "Juice 🍊"],
+        "answer": "A"
+    },
+    {
+        "question": "What is my favorite music genre?",
+        "options": [
+            "Rap 🎤", "Rock 🎸", "Phonk 🔥",
+            "Pop 🎶", "Classical 🎻",
+            "No specific genre / Other 🎧"
+        ],
+        "answer": "F"
+    },
+    {
+        "question": "What is my favorite season?",
+        "options": ["Winter ❄️", "Summer ☀️", "Autumn 🍂", "Spring 🌸"],
+        "answer": "A"
+    },
+    {
+        "question": "What is my favorite animal?",
+        "options": ["Cat 🐈", "Dog 🐕", "Wolf 🐺", "Lion 🦁"],
+        "answer": "B"
+    },
+    {
+        "question": "What is my favorite time of the day?",
+        "options": ["Morning 🌅", "Afternoon ☀️", "Sunset 🌇", "Late Night 🌃"],
+        "answer": "C"
+    },
+    {
+        "question": "Which country would I love to visit?",
+        "options": ["Japan 🇯🇵", "USA 🇺🇸", "Switzerland 🇨🇭", "Italy 🇮🇹"],
+        "answer": "A"
+    },
+    {
+        "question": "Which field interests me the most?",
+        "options": [
+            "Web Design 🌐", "Cybersecurity 🔐",
+            "Graphic Design 🎨", "Marketing 📈"
+        ],
+        "answer": "B"
+    },
+    {
+        "question": "Which vehicle do I prefer?",
+        "options": [
+            "Luxury Cars 🏎️", "Motorcycles 🏍️",
+            "Private Jets ✈️", "Regular Cars 🚘"
+        ],
+        "answer": "B"
+    },
+    {
+        "question": "What is my favorite movie genre?",
+        "options": ["Horror 👻", "Action 💥", "Romance ❤️", "Comedy 😂"],
+        "answer": "B"
+    },
+    {
+        "question": "What do I prefer doing in my free time?",
+        "options": [
+            "Playing Games 🎮", "Listening to Music 🎧",
+            "Watching Movies & Series 🎬", "Reading 📚"
+        ],
+        "answer": "C"
+    },
+    {
+        "question": "Which phone brand do I prefer?",
+        "options": ["iPhone 🍎", "Samsung 📱", "Google Pixel", "Xiaomi"],
+        "answer": "A"
+    },
+    {
+        "question": "What color clothes do I prefer?",
+        "options": ["Black 🖤", "White 🤍", "Grey 🩶", "Blue 💙"],
+        "answer": "A"
+    },
+    {
+        "question": "Which car brand do I like most?",
+        "options": [
+            "Mercedes-Benz 🚘", "BMW 🚗",
+            "Porsche 🏁", "Ferrari 🔥"
+        ],
+        "answer": "A"
+    },
+    {
+        "question": "What do I prefer during holidays?",
+        "options": [
+            "Travel & Discover Places ✈️",
+            "Stay Home 🏠",
+            "Go Out With Friends 🎉",
+            "Gaming & Entertainment 🎮"
+        ],
+        "answer": "A"
+    },
+    {
+        "question": "What is my favorite video game genre?",
+        "options": [
+            "Action & Adventure ⚔️",
+            "Racing 🏎️", "Football ⚽", "Horror 👻"
+        ],
+        "answer": "A"
+    },
+    {
+        "question": "What attracts me most in technology?",
+        "options": [
+            "Hacking & Cybersecurity 🔐",
+            "Programming & Coding 💻",
+            "Artificial Intelligence 🤖",
+            "Building Websites 🌐"
+        ],
+        "answer": "A"
+    },
+    {
+        "question": "What is my biggest future ambition?",
+        "options": [
+            "Become Financially Independent 💰",
+            "Build My Own Company 🏢",
+            "Become Famous 🌟",
+            "Travel Around the World 🌍"
+        ],
+        "answer": "B"
+    },
+    {
+        "question": "What would I like people to remember me for?",
+        "options": [
+            "My Intelligence 🧠",
+            "My Success 🏆",
+            "My Personality ❤️",
+            "My Creativity & Ideas 💡"
+        ],
+        "answer": "D"
+    }
+]
+
+LETTERS = ["A", "B", "C", "D", "E", "F"]
+
+
+# =====================================================
+# GOOGLE SHEETS
+# =====================================================
 
 def sheets_request(action, **data):
     if not GOOGLE_SCRIPT_URL or not GOOGLE_SCRIPT_TOKEN:
-        raise RuntimeError("Google Sheets configuration is missing")
+        raise RuntimeError("Google Sheets configuration missing")
 
     payload = {
         "action": action,
@@ -57,24 +205,22 @@ def sheets_request(action, **data):
     return result
 
 
-def get_messages():
-    result = sheets_request("list")
-    return result.get("messages", [])
-
-
-def send_to_sheets(name, message):
+def save_quiz_result(name, score, answers):
     return sheets_request(
-        "send",
+        "save_quiz",
         name=name,
-        message=message
+        score=score,
+        answers=answers
     )
 
 
-def delete_from_sheets(message_id):
-    return sheets_request("delete", id=message_id)
+def get_quiz_results():
+    return sheets_request("list_results").get("results", [])
 
 
-# ---------------- SECURITY ----------------
+# =====================================================
+# SECURITY
+# =====================================================
 
 def csrf_token():
     if "csrf_token" not in session:
@@ -93,6 +239,15 @@ def check_csrf():
         abort(400, description="Invalid form token")
 
 
+def private_required(function):
+    @wraps(function)
+    def wrapper(*args, **kwargs):
+        if not session.get("prv_unlocked"):
+            return redirect(url_for("home"))
+        return function(*args, **kwargs)
+    return wrapper
+
+
 def admin_required(function):
     @wraps(function)
     def wrapper(*args, **kwargs):
@@ -102,150 +257,215 @@ def admin_required(function):
     return wrapper
 
 
-# ---------------- HOME PAGE ----------------
+# =====================================================
+# DESIGN
+# =====================================================
+
+STYLE = """
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+background:#080808;color:white;font-family:Arial,sans-serif;
+min-height:100vh;padding:25px 6%;
+}
+a{color:white;text-decoration:none}
+.container{max-width:850px;margin:35px auto}
+.logo{
+text-align:center;font-size:48px;letter-spacing:10px;
+font-weight:bold;text-shadow:0 0 25px #ffffff66
+}
+.subtitle{
+text-align:center;color:#999;margin:12px 0 35px;
+letter-spacing:3px;font-size:11px
+}
+.card{
+background:#111;border:1px solid #292929;
+border-radius:18px;padding:30px;margin:20px 0;
+}
+h1,h2,h3{margin-bottom:15px}
+p{color:#aaa;line-height:1.8}
+.btn{
+display:inline-block;padding:14px 24px;border-radius:30px;
+background:white;color:black;border:0;font-weight:bold;
+cursor:pointer;text-align:center;font-size:13px
+}
+.btn:hover{background:#ddd}
+.btn-outline{background:transparent;color:white;border:1px solid #555}
+input{
+width:100%;padding:15px;margin:12px 0;
+background:#080808;color:white;border:1px solid #383838;
+border-radius:10px;font-size:15px
+}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+.tile{
+background:#171717;border:1px solid #393939;
+border-radius:15px;padding:25px;transition:.25s
+}
+.tile:hover{border-color:white;transform:translateY(-3px)}
+.emoji{font-size:35px;margin-bottom:15px}
+.badge{
+display:inline-block;border:1px solid #555;padding:7px 12px;
+border-radius:20px;font-size:10px;letter-spacing:2px;color:#bbb
+}
+.question{padding:25px 0;border-bottom:1px solid #292929}
+.question h3{font-size:16px;line-height:1.6}
+.option{
+display:block;background:#171717;border:1px solid #333;
+padding:15px;border-radius:11px;margin:10px 0;
+cursor:pointer;font-size:14px
+}
+.option:hover{border-color:#aaa;background:#202020}
+.option input{width:auto;margin-right:10px;accent-color:white}
+.error{color:#ff8585;margin:12px 0}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;margin-top:15px}
+td,th{text-align:left;padding:12px;border-bottom:1px solid #333}
+footer{text-align:center;color:#666;margin:45px 0 10px;font-size:12px}
+@media(max-width:600px){
+body{padding:18px 5%}
+.grid{grid-template-columns:1fr}
+.logo{font-size:34px;letter-spacing:6px}
+.card{padding:22px}
+}
+</style>
+"""
+
+
+# =====================================================
+# HOME
+# =====================================================
 
 HOME_HTML = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#080808">
-<title>SKYOVX | Official Portfolio</title>
-
+<title>SKYOVX | Official</title>
+""" + STYLE + """
 <style>
-*{margin:0;padding:0;box-sizing:border-box;scroll-behavior:smooth}
-:root{--bg:#080808;--card:#111;--gray:#999;--border:#292929}
-body{background:var(--bg);color:white;font-family:Arial,sans-serif;overflow-x:hidden}
-body:before{content:"";position:fixed;width:450px;height:450px;background:#ffffff0a;filter:blur(120px);top:10%;left:25%;border-radius:50%;pointer-events:none;z-index:-1}
-header{position:sticky;top:0;z-index:100;background:#080808ed;backdrop-filter:blur(18px);padding:12px 8%;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)}
-.logo{width:170px;height:65px;overflow:hidden}
-.logo img{width:100%;height:100%;object-fit:contain;filter:invert(1);transition:.3s}
-.logo img:hover{transform:scale(1.08)}
-nav{display:flex;gap:25px}
-nav a{color:#aaa;text-decoration:none;font-size:14px;transition:.3s}
-nav a:hover{color:white;text-shadow:0 0 12px white}
-.menu-btn{display:none;color:white;background:transparent;border:1px solid #555;border-radius:8px;padding:10px 14px;cursor:pointer}
-.hero{min-height:88vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:30px 20px;background:radial-gradient(ellipse at center,#222 0%,#080808 70%)}
-.tag{border:1px solid #555;padding:10px 20px;border-radius:30px;font-size:11px;letter-spacing:4px}
-.hero h1{font-size:clamp(55px,12vw,120px);letter-spacing:12px;text-shadow:0 0 35px #ffffff55;animation:glow 3s infinite alternate}
-.hero h2{font-size:22px;margin-top:15px}
-.hero p{color:var(--gray);line-height:1.8;max-width:550px;margin:20px auto 30px}
-.buttons{display:flex;gap:15px;flex-wrap:wrap;justify-content:center}
-.btn{display:inline-block;padding:15px 28px;border-radius:30px;text-decoration:none;font-weight:bold;font-size:13px;transition:.3s;cursor:pointer}
-.primary{background:white;color:black;border:0}
-.secondary{border:1px solid #666;color:white;background:transparent}
-.btn:hover{transform:translateY(-5px);box-shadow:0 0 25px #ffffff44}
-section:not(.hero){padding:85px 8%}
-.section-title{text-align:center;margin-bottom:45px}
-.section-title span{color:#aaa;letter-spacing:5px;font-size:11px}
-.section-title h2{font-size:36px;margin-top:12px}
-.about-box,.private-card,.contact-box{max-width:800px;margin:auto;background:var(--card);border:1px solid var(--border);padding:40px;border-radius:18px;text-align:center;transition:.3s}
-.about-box:hover,.private-card:hover,.contact-box:hover{border-color:white;transform:translateY(-4px)}
-.about-box p,.private-card p,.contact-box p{color:var(--gray);line-height:2}
-.private-card{max-width:650px}
-.private-icon{font-size:35px;margin-bottom:20px}
-.private-card input,.private-card textarea{width:100%;background:#080808;border:1px solid #333;border-radius:10px;padding:16px;color:white;font-size:14px;outline:none;margin:12px 0;font-family:Arial}
-.private-card textarea{resize:vertical;min-height:150px}
-.private-card input:focus,.private-card textarea:focus{border-color:white}
-.private-card button{margin-top:8px}
-.form-message{margin-top:15px;color:#ddd;font-size:13px}
-.socials{max-width:900px;margin:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px}
-.social{background:var(--card);border:1px solid var(--border);padding:25px 12px;border-radius:14px;text-align:center;text-decoration:none;color:white;transition:.35s}
-.social .icon{display:block;font-size:25px;font-weight:bold;margin-bottom:12px}
-.social:hover{border-color:white;background:#222;transform:translateY(-7px)}
-.contact-box{max-width:600px}
-.contact-box p{margin-bottom:25px}
-.reveal{opacity:0;transform:translateY(35px);transition:.8s}
-.reveal.show{opacity:1;transform:translateY(0)}
-footer{text-align:center;padding:30px;border-top:1px solid var(--border);color:#777;font-size:13px}
-footer span{color:white;letter-spacing:3px}
-@keyframes glow{from{text-shadow:0 0 15px #ffffff44}to{text-shadow:0 0 45px #ffffffaa}}
-@media(max-width:700px){
-header{padding:10px 5%}.logo{width:140px;height:55px}
-.menu-btn{display:block}
-nav{display:none;position:absolute;top:75px;left:0;width:100%;padding:25px;background:#101010;flex-direction:column;text-align:center;border-bottom:1px solid #333}
-nav.active{display:flex}
-.hero h1{letter-spacing:5px}.hero h2{font-size:18px}
-section:not(.hero){padding:65px 6%}
-.section-title h2{font-size:28px}
-.about-box,.contact-box,.private-card{padding:25px}
-.socials{grid-template-columns:repeat(2,1fr)}
+header{
+display:flex;justify-content:space-between;align-items:center;
+padding:10px 4%;border-bottom:1px solid #292929
 }
-@media(prefers-reduced-motion:reduce){
-*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
-.reveal{opacity:1;transform:none}
+header .logo{font-size:28px}
+nav{display:flex;gap:20px}
+nav a{color:#aaa;font-size:13px}
+.hero{
+min-height:75vh;display:flex;flex-direction:column;
+justify-content:center;align-items:center;text-align:center;
+background:radial-gradient(ellipse at center,#222 0%,#080808 70%);
+padding:30px 15px
+}
+.hero h1{font-size:clamp(55px,12vw,110px);letter-spacing:10px}
+.hero h2{margin:15px}
+.hero p{max-width:550px;margin:15px auto 25px}
+section{padding:65px 5%;max-width:1050px;margin:auto}
+.section-title{text-align:center;margin-bottom:30px}
+.section-title span{color:#999;letter-spacing:4px;font-size:11px}
+.section-title h2{margin-top:12px;font-size:32px}
+.about-box,.contact-box{
+max-width:750px;margin:auto;text-align:center;
+background:#111;border:1px solid #292929;
+padding:35px;border-radius:18px
+}
+.socials{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px}
+.social{
+background:#111;border:1px solid #292929;
+padding:22px;text-align:center;border-radius:12px
+}
+.social:hover{border-color:white}
+.social .icon{display:block;font-weight:bold;font-size:24px;margin-bottom:10px}
+@media(max-width:650px){
+nav{gap:10px;flex-wrap:wrap;justify-content:center}
+header{flex-direction:column;gap:15px}
 }
 </style>
 </head>
-
 <body>
+
 <header>
-<div class="logo">
-<img src="{{ url_for('static', filename='skyovx-logo.jpeg') }}" alt="SKYOVX Logo">
-</div>
-<button class="menu-btn" onclick="toggleMenu()" id="menuButton" aria-expanded="false">☰ MENU</button>
-<nav id="nav">
-<a href="#home" onclick="closeMenu()">Home</a>
-<a href="#about" onclick="closeMenu()">About</a>
-<a href="#private" onclick="closeMenu()">PRV Message</a>
-<a href="#socials" onclick="closeMenu()">Socials</a>
-<a href="#contact" onclick="closeMenu()">Contact</a>
+<div class="logo">SKYOVX</div>
+<nav>
+<a href="#home">Home</a>
+<a href="#about">About</a>
+<a href="#room">SKYOVX ROOM</a>
+<a href="#socials">Socials</a>
+<a href="#contact">Contact</a>
 </nav>
 </header>
 
-<section class="hero" id="home">
-<div class="tag">WELCOME TO MY WORLD</div>
+<div class="hero" id="home">
+<span class="badge">WELCOME TO MY WORLD</span>
 <h1>SKYOVX</h1>
 <h2>Independent Soul | Unique Mind</h2>
 <p>Not everyone needs to be understood. Some are simply meant to be different. Welcome to my world.</p>
-<div class="buttons">
-<a href="#private" class="btn primary">PRV MESSAGE</a>
-<a href="#socials" class="btn secondary">FOLLOW ME</a>
+<a href="#room" class="btn">ENTER SKYOVX ROOM</a>
 </div>
-</section>
 
-<section id="about" class="reveal">
-<div class="section-title"><span>BEYOND THE SURFACE</span><h2>About Me</h2></div>
+<section id="about">
+<div class="section-title">
+<span>BEYOND THE SURFACE</span>
+<h2>About Me</h2>
+</div>
 <div class="about-box">
 <p>Just a soul with a different perspective. I believe in individuality, silence, and being true to myself. I don't follow the crowd — I create my own path.</p>
 </div>
 </section>
 
-<section id="private" class="reveal">
-<div class="section-title"><span>PRIVATE SPACE</span><h2>PRV Message</h2></div>
-<div class="private-card">
-<div class="private-icon">🔒</div>
-<h3>Enter Private Space</h3>
-<p>A private place to share your thoughts with SKYOVX. Enter the access code to continue.</p>
+<section id="room">
+<div class="section-title">
+<span>CLASSIFIED PRIVATE SPACE</span>
+<h2>SKYOVX ROOM</h2>
+</div>
+
+<div class="card" style="max-width:700px;margin:auto;text-align:center">
+<div style="font-size:42px">🔒</div>
 
 {% if not unlocked %}
+<h3>Enter SKYOVX ROOM</h3>
+<p>Enter the access code to discover the private world.</p>
 <form method="POST" action="{{ url_for('unlock') }}">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-<input type="password" name="password" placeholder="Enter Access Password" maxlength="100" required>
-<button class="btn primary" type="submit">UNLOCK →</button>
+<input type="password" name="password"
+placeholder="Enter Access Password" maxlength="100" required>
+<button class="btn" type="submit">UNLOCK →</button>
 </form>
 {% else %}
-<h3 style="margin:20px 0">Send Me A Message</h3>
-<form method="POST" action="{{ url_for('send_message') }}">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-<input type="text" name="name" placeholder="Your Name" maxlength="60" required>
-<textarea name="message" placeholder="Write your message here..." maxlength="3000" required></textarea>
-<button class="btn primary" type="submit">SEND MESSAGE ↗</button>
-</form>
-<p style="margin-top:20px"><a href="{{ url_for('lock') }}" style="color:white">Lock Private Space</a></p>
+<h3>WELCOME TO SKYOVX ROOM</h3>
+<p>Choose your experience.</p>
+<div class="grid" style="margin-top:25px;text-align:left">
+<a class="tile" href="{{ url_for('quiz_start') }}">
+<div class="emoji">🧠</div>
+<h3>THE TEST</h3>
+<p>Discover how well you know SKYOVX.</p>
+<span class="badge">20 QUESTIONS</span>
+</a>
+
+<a class="tile" href="{{ url_for('mystery') }}">
+<div class="emoji">🔐</div>
+<h3>MYSTERY ROOM</h3>
+<p>A mysterious space. Something special is waiting.</p>
+<span class="badge">CLASSIFIED</span>
+</a>
+</div>
+<a href="{{ url_for('lock') }}" style="display:block;margin-top:25px;color:#aaa">
+LOCK SKYOVX ROOM
+</a>
 {% endif %}
 
-{% with messages = get_flashed_messages() %}
-{% for message in messages %}
-<div class="form-message">{{ message }}</div>
+{% for message in get_flashed_messages() %}
+<p class="error">{{ message }}</p>
 {% endfor %}
-{% endwith %}
 </div>
 </section>
 
-<section id="socials" class="reveal">
-<div class="section-title"><span>LET'S CONNECT</span><h2>My Socials</h2></div>
+<section id="socials">
+<div class="section-title">
+<span>LET'S CONNECT</span>
+<h2>My Socials</h2>
+</div>
 <div class="socials">
 <a class="social" href="https://instagram.com/skyovx" target="_blank" rel="noopener noreferrer"><span class="icon">IG</span>Instagram</a>
 <a class="social" href="https://www.tiktok.com/@skyovx" target="_blank" rel="noopener noreferrer"><span class="icon">TK</span>TikTok</a>
@@ -258,107 +478,273 @@ section:not(.hero){padding:65px 6%}
 </div>
 </section>
 
-<section id="contact" class="reveal">
-<div class="section-title"><span>GET IN TOUCH</span><h2>Contact Me</h2></div>
+<section id="contact">
+<div class="section-title">
+<span>GET IN TOUCH</span>
+<h2>Contact Me</h2>
+</div>
 <div class="contact-box">
 <p>Have something to share? Feel free to get in touch.</p>
-<a href="https://wa.me/212773337627" target="_blank" rel="noopener noreferrer" class="btn primary">CONTACT ON WHATSAPP</a>
+<a href="https://wa.me/212773337627" target="_blank" rel="noopener noreferrer" class="btn">CONTACT ON WHATSAPP</a>
 </div>
 </section>
 
-<footer>© 2026 <span>SKYOVX</span> — ALL RIGHTS RESERVED</footer>
-
-<script>
-function toggleMenu(){
-const nav=document.getElementById("nav");
-nav.classList.toggle("active");
-document.getElementById("menuButton").setAttribute("aria-expanded",nav.classList.contains("active"));
-}
-function closeMenu(){
-document.getElementById("nav").classList.remove("active");
-document.getElementById("menuButton").setAttribute("aria-expanded","false");
-}
-if("IntersectionObserver" in window){
-const observer=new IntersectionObserver(entries=>{
-entries.forEach(entry=>{
-if(entry.isIntersecting){
-entry.target.classList.add("show");
-observer.unobserve(entry.target);
-}
-});
-},{threshold:.12});
-document.querySelectorAll(".reveal").forEach(el=>observer.observe(el));
-}else{
-document.querySelectorAll(".reveal").forEach(el=>el.classList.add("show"));
-}
-</script>
+<footer>© 2026 SKYOVX — ALL RIGHTS RESERVED</footer>
 </body>
 </html>
 """
 
 
-# ---------------- ADMIN PAGE ----------------
+# =====================================================
+# QUIZ START
+# =====================================================
+
+START_HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SKYOVX | Start Test</title>
+""" + STYLE + """
+</head>
+<body>
+<div class="container">
+<div class="logo">SKYOVX</div>
+<p class="subtitle">THE PRIVATE CHALLENGE</p>
+
+<div class="card">
+<span class="badge">20 QUESTIONS • 20 POINTS</span>
+<h2 style="margin-top:20px">Ready for the challenge?</h2>
+<p>Enter your name before starting the test.</p>
+
+<form method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input name="name" maxlength="60" placeholder="Enter Your Name" required>
+<button class="btn" type="submit">START THE TEST →</button>
+</form>
+</div>
+<a href="{{ url_for('home') }}#room">← Back to SKYOVX ROOM</a>
+<footer>SKYOVX • PRIVATE CHALLENGE</footer>
+</div>
+</body>
+</html>
+"""
+
+
+# =====================================================
+# QUIZ
+# =====================================================
+
+QUIZ_HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SKYOVX | The Test</title>
+""" + STYLE + """
+</head>
+<body>
+<div class="container">
+<div class="logo">SKYOVX</div>
+<p class="subtitle">HOW WELL DO YOU KNOW ME?</p>
+
+<div class="card">
+<span class="badge">20 QUESTIONS</span>
+<span class="badge">PLAYER: {{ name }}</span>
+
+<h2 style="margin-top:20px">THE TEST</h2>
+<p>Choose one answer for every question. Your final score will be revealed at the end.</p>
+
+<div class="progress"><div style="width:100%"></div></div>
+
+<form method="POST" action="{{ url_for('quiz_submit') }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+{% for q in questions %}
+{% set q_index = loop.index0 %}
+<div class="question">
+<h3>{{ loop.index }}. {{ q.question }}</h3>
+
+{% for option in q.options %}
+<label class="option">
+<input type="radio"
+name="q{{ q_index }}"
+value="{{ 'ABCDEF'[loop.index0] }}"
+required>
+{{ 'ABCDEF'[loop.index0] }} — {{ option }}
+</label>
+{% endfor %}
+</div>
+{% endfor %}
+
+<button class="btn" type="submit"
+onclick="return confirm('Are you ready to submit your answers?')">
+SUBMIT MY ANSWERS →
+</button>
+</form>
+</div>
+<footer>SKYOVX • YOUR CHALLENGE</footer>
+</div>
+</body>
+</html>
+"""
+
+
+# =====================================================
+# RESULT
+# =====================================================
+
+RESULT_HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SKYOVX | Your Result</title>
+""" + STYLE + """
+</head>
+<body>
+<div class="container">
+<div class="logo">SKYOVX</div>
+<p class="subtitle">CHALLENGE COMPLETED</p>
+
+<div class="card" style="text-align:center;padding:45px 25px">
+<div style="font-size:55px">🏆</div>
+<h2>Congratulations, {{ name }}!</h2>
+<p>You have completed the SKYOVX challenge.</p>
+
+<div style="font-size:75px;font-weight:bold;margin:30px 0;
+text-shadow:0 0 25px #ffffff55">
+{{ score }}<span style="font-size:28px;color:#888">/20</span>
+</div>
+
+<p>Your result has been recorded.</p>
+<p style="margin-top:15px">Thank you for taking the challenge.</p>
+</div>
+
+<a class="btn" href="{{ url_for('quiz_start') }}">TRY AGAIN ↻</a>
+<a class="btn btn-outline" href="{{ url_for('home') }}#room">HOME</a>
+
+<footer>SKYOVX • ALL RIGHTS RESERVED</footer>
+</div>
+</body>
+</html>
+"""
+
+
+# =====================================================
+# MYSTERY ROOM
+# =====================================================
+
+MYSTERY_HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SKYOVX | Mystery Room</title>
+""" + STYLE + """
+</head>
+<body>
+<div class="container">
+<div class="logo">SKYOVX</div>
+<p class="subtitle">CLASSIFIED PRIVATE SPACE</p>
+
+<div class="card" style="text-align:center;padding:55px 25px">
+<div style="font-size:65px">🔐</div>
+<h2>MYSTERY ROOM</h2>
+<p>Not everything is meant to be discovered immediately.</p>
+<p style="margin:20px 0"><span class="badge">CLASSIFIED</span></p>
+</div>
+
+<a href="{{ url_for('home') }}#room">← BACK TO SKYOVX ROOM</a>
+</div>
+</body>
+</html>
+"""
+
+
+# =====================================================
+# ADMIN
+# =====================================================
 
 ADMIN_HTML = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SKYOVX | Admin</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:#080808;color:white;font-family:Arial;padding:30px 6%}
-h1{text-align:center;margin:20px 0;letter-spacing:5px}
-.subtitle{text-align:center;color:#999;margin-bottom:35px}
-.card,.message{max-width:850px;margin:20px auto;padding:25px;background:#111;border:1px solid #292929;border-radius:15px}
-input{width:100%;padding:15px;background:#080808;border:1px solid #444;border-radius:8px;color:white;margin:15px 0}
-button{display:inline-block;background:white;color:black;border:0;padding:13px 22px;border-radius:25px;cursor:pointer;font-weight:bold}
-.message p{color:#ccc;line-height:1.8;margin:15px 0;white-space:pre-wrap;overflow-wrap:anywhere}
-small{color:#888}
-.logout{display:block;text-align:center;margin:30px;color:#aaa}
-.error{color:#ff7777;margin:15px 0}
-</style>
+""" + STYLE + """
 </head>
 <body>
-<h1>SKYOVX</h1>
+<div class="container">
+<div class="logo">SKYOVX</div>
 <p class="subtitle">PRIVATE ADMIN PANEL</p>
 
 {% if not logged_in %}
 <div class="card">
 <h2>Admin Login</h2>
-<form method="POST" action="{{ url_for('admin') }}">
+<form method="POST">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <input type="password" name="password" placeholder="Admin Password" required>
-<button type="submit">LOGIN</button>
+<button class="btn" type="submit">LOGIN</button>
 </form>
-{% with messages = get_flashed_messages() %}
-{% for message in messages %}<p class="error">{{ message }}</p>{% endfor %}
-{% endwith %}
-</div>
-{% else %}
-<div class="card"><h2>Messages: {{ messages|length }}</h2></div>
-{% for item in messages %}
-<div class="message">
-<h3>{{ item['name'] }}</h3>
-<small>{{ item['created_at'] }}</small>
-<p>{{ item['message'] }}</p>
-<form method="POST" action="{{ url_for('delete_message', message_id=item['id']) }}" onsubmit="return confirm('Delete this message?')">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-<button type="submit">DELETE</button>
-</form>
-</div>
-{% else %}
-<div class="card"><p>No messages yet.</p></div>
+{% for message in get_flashed_messages() %}
+<p class="error">{{ message }}</p>
 {% endfor %}
-<a class="logout" href="{{ url_for('admin_logout') }}">LOG OUT</a>
+</div>
+
+{% else %}
+
+<div class="card">
+<h2>{{ results|length }} Quiz Attempts</h2>
+<p>SKYOVX TEST RESULTS</p>
+</div>
+
+<div class="card">
+<h2>Participants Results</h2>
+{% if results %}
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>Name</th><th>Score</th><th>Date</th></tr>
+</thead>
+<tbody>
+{% for item in results %}
+<tr>
+<td>{{ item.name }}</td>
+<td>{{ item.score }}/20</td>
+<td>{{ item.created_at }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% else %}
+<p>No quiz attempts yet.</p>
 {% endif %}
+</div>
+
+<a href="{{ url_for('admin_logout') }}">LOG OUT</a>
+
+{% for message in get_flashed_messages() %}
+<p class="error">{{ message }}</p>
+{% endfor %}
+
+{% endif %}
+<footer>SKYOVX ADMIN</footer>
+</div>
 </body>
 </html>
 """
 
 
-# ---------------- ROUTES ----------------
+# =====================================================
+# ROUTES
+# =====================================================
 
 @app.route("/")
 def home():
@@ -374,48 +760,109 @@ def unlock():
     password = request.form.get("password", "")
 
     if PRV_PASSWORD and hmac.compare_digest(password, PRV_PASSWORD):
+        session.clear()
         session["prv_unlocked"] = True
-        flash("Access granted. Welcome!")
+        flash("Welcome to SKYOVX ROOM.")
     else:
         session["prv_unlocked"] = False
         flash("Incorrect password. Try again.")
 
-    return redirect(url_for("home") + "#private")
+    return redirect(url_for("home") + "#room")
 
 
 @app.route("/lock")
 def lock():
     session.pop("prv_unlocked", None)
-    return redirect(url_for("home") + "#private")
+    session.pop("quiz_name", None)
+    return redirect(url_for("home") + "#room")
 
 
-@app.route("/send-message", methods=["POST"])
-def send_message():
+@app.route("/quiz/start", methods=["GET", "POST"])
+@private_required
+def quiz_start():
+    if request.method == "POST":
+        check_csrf()
+        name = request.form.get("name", "").strip()
+
+        if not name or len(name) > 60:
+            flash("Please enter a valid name.")
+            return redirect(url_for("quiz_start"))
+
+        session["quiz_name"] = name
+        return redirect(url_for("quiz"))
+
+    return render_template_string(START_HTML)
+
+
+@app.route("/quiz")
+@private_required
+def quiz():
+    name = session.get("quiz_name")
+
+    if not name:
+        return redirect(url_for("quiz_start"))
+
+    public_questions = [
+        {
+            "question": q["question"],
+            "options": q["options"]
+        }
+        for q in QUESTIONS
+    ]
+
+    return render_template_string(
+        QUIZ_HTML,
+        questions=public_questions,
+        name=name
+    )
+
+
+@app.route("/quiz/submit", methods=["POST"])
+@private_required
+def quiz_submit():
     check_csrf()
 
-    if not session.get("prv_unlocked"):
-        abort(403)
+    name = session.get("quiz_name")
+    if not name:
+        return redirect(url_for("quiz_start"))
 
-    name = request.form.get("name", "").strip()
-    message = request.form.get("message", "").strip()
+    answers = []
 
-    if not name or not message:
-        flash("Please complete all fields.")
-        return redirect(url_for("home") + "#private")
+    for i, question in enumerate(QUESTIONS):
+        answer = request.form.get(f"q{i}", "").upper()
+        valid = LETTERS[:len(question["options"])]
 
-    if len(name) > 60 or len(message) > 3000:
-        flash("Your message is too long.")
-        return redirect(url_for("home") + "#private")
+        if answer not in valid:
+            flash("Please answer all questions.")
+            return redirect(url_for("quiz"))
+
+        answers.append(answer)
+
+    score = sum(
+        answers[i] == question["answer"]
+        for i, question in enumerate(QUESTIONS)
+    )
 
     try:
-        send_to_sheets(name, message)
-        session.pop("prv_unlocked", None)
-        flash("Your message has been sent successfully!")
+        save_quiz_result(name, score, answers)
     except Exception:
-        app.logger.exception("Google Sheets send failed")
-        flash("Message could not be sent. Please try again.")
+        app.logger.exception("Could not save quiz result")
+        flash("Could not save your result. Please try again.")
+        return redirect(url_for("quiz"))
 
-    return redirect(url_for("home") + "#private")
+    session.pop("quiz_name", None)
+
+    return render_template_string(
+        RESULT_HTML,
+        name=name,
+        score=score
+    )
+
+
+@app.route("/mystery")
+@private_required
+def mystery():
+    return render_template_string(MYSTERY_HTML)
 
 
 @app.route("/admin", methods=["GET", "POST"])
@@ -433,34 +880,23 @@ def admin():
 
     if not session.get("admin_logged_in"):
         return render_template_string(
-            ADMIN_HTML, logged_in=False, messages=[]
+            ADMIN_HTML,
+            logged_in=False,
+            results=[]
         )
 
     try:
-        messages = get_messages()
+        results = get_quiz_results()
     except Exception:
-        app.logger.exception("Google Sheets list failed")
-        messages = []
-        flash("Could not load messages from Google Sheets.")
+        app.logger.exception("Could not load quiz results")
+        results = []
+        flash("Could not load results from Google Sheets.")
 
     return render_template_string(
-        ADMIN_HTML, logged_in=True, messages=messages
+        ADMIN_HTML,
+        logged_in=True,
+        results=results
     )
-
-
-@app.route("/admin/delete/<string:message_id>", methods=["POST"])
-@admin_required
-def delete_message(message_id):
-    check_csrf()
-
-    try:
-        delete_from_sheets(message_id)
-        flash("Message deleted.")
-    except Exception:
-        app.logger.exception("Google Sheets delete failed")
-        flash("Could not delete this message.")
-
-    return redirect(url_for("admin"))
 
 
 @app.route("/admin/logout")
