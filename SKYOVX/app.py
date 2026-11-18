@@ -1,11 +1,11 @@
 
 import os
-import sqlite3
-import secrets
 import hmac
-from datetime import datetime
+import secrets
 from functools import wraps
+from datetime import datetime
 
+import requests
 from flask import (
     Flask, render_template_string, request,
     redirect, url_for, session, flash, abort
@@ -24,30 +24,54 @@ app.config.update(
 PRV_PASSWORD = os.environ.get("PRV_PASSWORD", "")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 
-DATABASE = os.environ.get("DB_PATH", "skyovx.db")
+GOOGLE_SCRIPT_URL = os.environ.get("GOOGLE_SCRIPT_URL", "")
+GOOGLE_SCRIPT_TOKEN = os.environ.get("GOOGLE_SCRIPT_TOKEN", "")
+
+TIMEOUT = 20
 
 
-# ---------------- DATABASE ----------------
+# ---------------- GOOGLE SHEETS ----------------
 
-def get_db():
-    db = sqlite3.connect(DATABASE, timeout=20)
-    db.row_factory = sqlite3.Row
-    return db
+def sheets_request(action, **data):
+    if not GOOGLE_SCRIPT_URL or not GOOGLE_SCRIPT_TOKEN:
+        raise RuntimeError("Google Sheets configuration is missing")
+
+    payload = {
+        "action": action,
+        "token": GOOGLE_SCRIPT_TOKEN,
+        **data
+    }
+
+    response = requests.post(
+        GOOGLE_SCRIPT_URL,
+        json=payload,
+        timeout=TIMEOUT
+    )
+
+    response.raise_for_status()
+    result = response.json()
+
+    if not result.get("success"):
+        raise RuntimeError(result.get("error", "Google Sheets error"))
+
+    return result
 
 
-def init_db():
-    with get_db() as db:
-        db.execute("""
-            CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                message TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            )
-        """)
+def get_messages():
+    result = sheets_request("list")
+    return result.get("messages", [])
 
 
-init_db()
+def send_to_sheets(name, message):
+    return sheets_request(
+        "send",
+        name=name,
+        message=message
+    )
+
+
+def delete_from_sheets(message_id):
+    return sheets_request("delete", id=message_id)
 
 
 # ---------------- SECURITY ----------------
@@ -156,132 +180,116 @@ section:not(.hero){padding:65px 6%}
 </head>
 
 <body>
-
 <header>
-    <div class="logo">
-        <img src="{{ url_for('static', filename='skyovx-logo.jpeg') }}" alt="SKYOVX Logo">
-    </div>
-
-    <button class="menu-btn" onclick="toggleMenu()" id="menuButton" aria-expanded="false">☰ MENU</button>
-
-    <nav id="nav">
-        <a href="#home" onclick="closeMenu()">Home</a>
-        <a href="#about" onclick="closeMenu()">About</a>
-        <a href="#private" onclick="closeMenu()">PRV Message</a>
-        <a href="#socials" onclick="closeMenu()">Socials</a>
-        <a href="#contact" onclick="closeMenu()">Contact</a>
-    </nav>
+<div class="logo">
+<img src="{{ url_for('static', filename='skyovx-logo.jpeg') }}" alt="SKYOVX Logo">
+</div>
+<button class="menu-btn" onclick="toggleMenu()" id="menuButton" aria-expanded="false">☰ MENU</button>
+<nav id="nav">
+<a href="#home" onclick="closeMenu()">Home</a>
+<a href="#about" onclick="closeMenu()">About</a>
+<a href="#private" onclick="closeMenu()">PRV Message</a>
+<a href="#socials" onclick="closeMenu()">Socials</a>
+<a href="#contact" onclick="closeMenu()">Contact</a>
+</nav>
 </header>
 
 <section class="hero" id="home">
-    <div class="tag">WELCOME TO MY WORLD</div>
-    <h1>SKYOVX</h1>
-    <h2>Independent Soul | Unique Mind</h2>
-    <p>Not everyone needs to be understood. Some are simply meant to be different. Welcome to my world.</p>
-    <div class="buttons">
-        <a href="#private" class="btn primary">PRV MESSAGE</a>
-        <a href="#socials" class="btn secondary">FOLLOW ME</a>
-    </div>
+<div class="tag">WELCOME TO MY WORLD</div>
+<h1>SKYOVX</h1>
+<h2>Independent Soul | Unique Mind</h2>
+<p>Not everyone needs to be understood. Some are simply meant to be different. Welcome to my world.</p>
+<div class="buttons">
+<a href="#private" class="btn primary">PRV MESSAGE</a>
+<a href="#socials" class="btn secondary">FOLLOW ME</a>
+</div>
 </section>
 
 <section id="about" class="reveal">
-    <div class="section-title">
-        <span>BEYOND THE SURFACE</span>
-        <h2>About Me</h2>
-    </div>
-    <div class="about-box">
-        <p>Just a soul with a different perspective. I believe in individuality, silence, and being true to myself. I don't follow the crowd — I create my own path.</p>
-    </div>
+<div class="section-title"><span>BEYOND THE SURFACE</span><h2>About Me</h2></div>
+<div class="about-box">
+<p>Just a soul with a different perspective. I believe in individuality, silence, and being true to myself. I don't follow the crowd — I create my own path.</p>
+</div>
 </section>
 
 <section id="private" class="reveal">
-    <div class="section-title">
-        <span>PRIVATE SPACE</span>
-        <h2>PRV Message</h2>
-    </div>
+<div class="section-title"><span>PRIVATE SPACE</span><h2>PRV Message</h2></div>
+<div class="private-card">
+<div class="private-icon">🔒</div>
+<h3>Enter Private Space</h3>
+<p>A private place to share your thoughts with SKYOVX. Enter the access code to continue.</p>
 
-    <div class="private-card">
-        <div class="private-icon">🔒</div>
-        <h3>Enter Private Space</h3>
-        <p>A private place to share your thoughts with SKYOVX. Enter the access code to continue.</p>
+{% if not unlocked %}
+<form method="POST" action="{{ url_for('unlock') }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input type="password" name="password" placeholder="Enter Access Password" maxlength="100" required>
+<button class="btn primary" type="submit">UNLOCK →</button>
+</form>
+{% else %}
+<h3 style="margin:20px 0">Send Me A Message</h3>
+<form method="POST" action="{{ url_for('send_message') }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input type="text" name="name" placeholder="Your Name" maxlength="60" required>
+<textarea name="message" placeholder="Write your message here..." maxlength="3000" required></textarea>
+<button class="btn primary" type="submit">SEND MESSAGE ↗</button>
+</form>
+<p style="margin-top:20px"><a href="{{ url_for('lock') }}" style="color:white">Lock Private Space</a></p>
+{% endif %}
 
-        {% if not unlocked %}
-        <form method="POST" action="{{ url_for('unlock') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="password" name="password" placeholder="Enter Access Password" maxlength="100" required>
-            <button class="btn primary" type="submit">UNLOCK →</button>
-        </form>
-        {% else %}
-        <h3 style="margin:20px 0">Send Me A Message</h3>
-        <form method="POST" action="{{ url_for('send_message') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="text" name="name" placeholder="Your Name" maxlength="60" required>
-            <textarea name="message" placeholder="Write your message here..." maxlength="3000" required></textarea>
-            <button class="btn primary" type="submit">SEND MESSAGE ↗</button>
-        </form>
-        <p style="margin-top:20px"><a href="{{ url_for('lock') }}" style="color:white">Lock Private Space</a></p>
-        {% endif %}
-
-        {% with messages = get_flashed_messages() %}
-        {% for message in messages %}
-        <div class="form-message">{{ message }}</div>
-        {% endfor %}
-        {% endwith %}
-    </div>
+{% with messages = get_flashed_messages() %}
+{% for message in messages %}
+<div class="form-message">{{ message }}</div>
+{% endfor %}
+{% endwith %}
+</div>
 </section>
 
 <section id="socials" class="reveal">
-    <div class="section-title">
-        <span>LET'S CONNECT</span>
-        <h2>My Socials</h2>
-    </div>
-    <div class="socials">
-        <a class="social" href="https://instagram.com/skyovx" target="_blank" rel="noopener noreferrer"><span class="icon">IG</span>Instagram</a>
-        <a class="social" href="https://www.tiktok.com/@skyovx" target="_blank" rel="noopener noreferrer"><span class="icon">TK</span>TikTok</a>
-        <a class="social" href="https://github.com/skyovx" target="_blank" rel="noopener noreferrer"><span class="icon">GH</span>GitHub</a>
-        <a class="social" href="https://discord.com/users/1391832246314340584" target="_blank" rel="noopener noreferrer"><span class="icon">DC</span>Discord</a>
-        <a class="social" href="https://wa.me/212773337627" target="_blank" rel="noopener noreferrer"><span class="icon">WA</span>WhatsApp</a>
-        <a class="social" href="https://facebook.com/skyovx" target="_blank" rel="noopener noreferrer"><span class="icon">FB</span>Facebook</a>
-        <a class="social" href="https://www.youtube.com/@skyovx" target="_blank" rel="noopener noreferrer"><span class="icon">YT</span>YouTube</a>
-        <a class="social" href="https://t.me/skyovx" target="_blank" rel="noopener noreferrer"><span class="icon">TG</span>Telegram</a>
-    </div>
+<div class="section-title"><span>LET'S CONNECT</span><h2>My Socials</h2></div>
+<div class="socials">
+<a class="social" href="https://instagram.com/skyovx" target="_blank" rel="noopener noreferrer"><span class="icon">IG</span>Instagram</a>
+<a class="social" href="https://www.tiktok.com/@skyovx" target="_blank" rel="noopener noreferrer"><span class="icon">TK</span>TikTok</a>
+<a class="social" href="https://github.com/skyovx" target="_blank" rel="noopener noreferrer"><span class="icon">GH</span>GitHub</a>
+<a class="social" href="https://discord.com/users/1391832246314340584" target="_blank" rel="noopener noreferrer"><span class="icon">DC</span>Discord</a>
+<a class="social" href="https://wa.me/212773337627" target="_blank" rel="noopener noreferrer"><span class="icon">WA</span>WhatsApp</a>
+<a class="social" href="https://facebook.com/skyovx" target="_blank" rel="noopener noreferrer"><span class="icon">FB</span>Facebook</a>
+<a class="social" href="https://www.youtube.com/@skyovx" target="_blank" rel="noopener noreferrer"><span class="icon">YT</span>YouTube</a>
+<a class="social" href="https://t.me/skyovx" target="_blank" rel="noopener noreferrer"><span class="icon">TG</span>Telegram</a>
+</div>
 </section>
 
 <section id="contact" class="reveal">
-    <div class="section-title">
-        <span>GET IN TOUCH</span>
-        <h2>Contact Me</h2>
-    </div>
-    <div class="contact-box">
-        <p>Have something to share? Feel free to get in touch.</p>
-        <a href="https://wa.me/212773337627" target="_blank" rel="noopener noreferrer" class="btn primary">CONTACT ON WHATSAPP</a>
-    </div>
+<div class="section-title"><span>GET IN TOUCH</span><h2>Contact Me</h2></div>
+<div class="contact-box">
+<p>Have something to share? Feel free to get in touch.</p>
+<a href="https://wa.me/212773337627" target="_blank" rel="noopener noreferrer" class="btn primary">CONTACT ON WHATSAPP</a>
+</div>
 </section>
 
 <footer>© 2026 <span>SKYOVX</span> — ALL RIGHTS RESERVED</footer>
 
 <script>
 function toggleMenu(){
-    const nav=document.getElementById("nav");
-    nav.classList.toggle("active");
-    document.getElementById("menuButton").setAttribute("aria-expanded",nav.classList.contains("active"));
+const nav=document.getElementById("nav");
+nav.classList.toggle("active");
+document.getElementById("menuButton").setAttribute("aria-expanded",nav.classList.contains("active"));
 }
 function closeMenu(){
-    document.getElementById("nav").classList.remove("active");
-    document.getElementById("menuButton").setAttribute("aria-expanded","false");
+document.getElementById("nav").classList.remove("active");
+document.getElementById("menuButton").setAttribute("aria-expanded","false");
 }
 if("IntersectionObserver" in window){
-    const observer=new IntersectionObserver(entries=>{
-        entries.forEach(entry=>{
-            if(entry.isIntersecting){
-                entry.target.classList.add("show");
-                observer.unobserve(entry.target);
-            }
-        });
-    },{threshold:.12});
-    document.querySelectorAll(".reveal").forEach(el=>observer.observe(el));
+const observer=new IntersectionObserver(entries=>{
+entries.forEach(entry=>{
+if(entry.isIntersecting){
+entry.target.classList.add("show");
+observer.unobserve(entry.target);
+}
+});
+},{threshold:.12});
+document.querySelectorAll(".reveal").forEach(el=>observer.observe(el));
 }else{
-    document.querySelectorAll(".reveal").forEach(el=>el.classList.add("show"));
+document.querySelectorAll(".reveal").forEach(el=>el.classList.add("show"));
 }
 </script>
 </body>
@@ -305,7 +313,7 @@ h1{text-align:center;margin:20px 0;letter-spacing:5px}
 .subtitle{text-align:center;color:#999;margin-bottom:35px}
 .card,.message{max-width:850px;margin:20px auto;padding:25px;background:#111;border:1px solid #292929;border-radius:15px}
 input{width:100%;padding:15px;background:#080808;border:1px solid #444;border-radius:8px;color:white;margin:15px 0}
-button,.btn{display:inline-block;background:white;color:black;border:0;padding:13px 22px;border-radius:25px;cursor:pointer;font-weight:bold;text-decoration:none}
+button{display:inline-block;background:white;color:black;border:0;padding:13px 22px;border-radius:25px;cursor:pointer;font-weight:bold}
 .message p{color:#ccc;line-height:1.8;margin:15px 0;white-space:pre-wrap;overflow-wrap:anywhere}
 small{color:#888}
 .logout{display:block;text-align:center;margin:30px;color:#aaa}
@@ -363,7 +371,6 @@ def home():
 @app.route("/unlock", methods=["POST"])
 def unlock():
     check_csrf()
-
     password = request.form.get("password", "")
 
     if PRV_PASSWORD and hmac.compare_digest(password, PRV_PASSWORD):
@@ -400,19 +407,14 @@ def send_message():
         flash("Your message is too long.")
         return redirect(url_for("home") + "#private")
 
-    with get_db() as db:
-        db.execute(
-            """INSERT INTO messages (name, message, created_at)
-               VALUES (?, ?, ?)""",
-            (
-                name,
-                message,
-                datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-            )
-        )
+    try:
+        send_to_sheets(name, message)
+        session.pop("prv_unlocked", None)
+        flash("Your message has been sent successfully!")
+    except Exception:
+        app.logger.exception("Google Sheets send failed")
+        flash("Message could not be sent. Please try again.")
 
-    session.pop("prv_unlocked", None)
-    flash("Your message has been sent successfully!")
     return redirect(url_for("home") + "#private")
 
 
@@ -420,7 +422,6 @@ def send_message():
 def admin():
     if request.method == "POST":
         check_csrf()
-
         password = request.form.get("password", "")
 
         if ADMIN_PASSWORD and hmac.compare_digest(password, ADMIN_PASSWORD):
@@ -435,23 +436,29 @@ def admin():
             ADMIN_HTML, logged_in=False, messages=[]
         )
 
-    with get_db() as db:
-        messages = db.execute(
-            "SELECT * FROM messages ORDER BY id DESC"
-        ).fetchall()
+    try:
+        messages = get_messages()
+    except Exception:
+        app.logger.exception("Google Sheets list failed")
+        messages = []
+        flash("Could not load messages from Google Sheets.")
 
     return render_template_string(
         ADMIN_HTML, logged_in=True, messages=messages
     )
 
 
-@app.route("/admin/delete/<int:message_id>", methods=["POST"])
+@app.route("/admin/delete/<string:message_id>", methods=["POST"])
 @admin_required
 def delete_message(message_id):
     check_csrf()
 
-    with get_db() as db:
-        db.execute("DELETE FROM messages WHERE id = ?", (message_id,))
+    try:
+        delete_from_sheets(message_id)
+        flash("Message deleted.")
+    except Exception:
+        app.logger.exception("Google Sheets delete failed")
+        flash("Could not delete this message.")
 
     return redirect(url_for("admin"))
 
@@ -460,6 +467,11 @@ def delete_message(message_id):
 def admin_logout():
     session.clear()
     return redirect(url_for("admin"))
+
+
+@app.route("/health")
+def health():
+    return {"status": "ok"}
 
 
 if __name__ == "__main__":
